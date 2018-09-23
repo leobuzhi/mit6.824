@@ -26,6 +26,7 @@ func MapFunc(file string, value string) (res []KeyValue) {
 		kv := KeyValue{w, ""}
 		res = append(res, kv)
 	}
+
 	return
 }
 
@@ -55,6 +56,7 @@ func makeInputs(num int) []string {
 		w.Flush()
 		file.Close()
 	}
+
 	return names
 }
 
