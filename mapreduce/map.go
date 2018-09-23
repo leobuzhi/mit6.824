@@ -1,8 +1,8 @@
 package mapreduce
 
 import (
-	"bufio"
 	"encoding/json"
+	"io/ioutil"
 	"os"
 
 	"github.com/golang/glog"
@@ -15,27 +15,28 @@ func doMap(
 	nReduce int, // the number of reduce task that will be run ("R" in the paper)
 	mapF func(filename string, contents string) []KeyValue,
 ) {
-	for r := 0; r != nReduce; r++ {
-		iFile, err := os.Open(inFile)
-		if err != nil {
-			glog.Errorf("os.Open %s failed,err: %v", inFile, err)
-		}
+	data, err := ioutil.ReadFile(inFile)
+	if err != nil {
+		glog.Errorf("os.Open %s failed,err: %v", inFile, err)
+	}
 
+	medFiles := make([]*os.File, nReduce)
+	encs := make([]*json.Encoder, nReduce)
+	for r := 0; r != nReduce; r++ {
 		rName := reduceName(jobName, mapTask, r)
-		oFile, err := os.Create(rName)
+		medFiles[r], err = os.Create(rName)
 		if err != nil {
 			glog.Errorf("os.Create %v faild,err: %v", rName, err)
 		}
-		iFileScanner := bufio.NewScanner(iFile)
-		enc := json.NewEncoder(oFile)
-		for iFileScanner.Scan() {
-			text := iFileScanner.Text()
-			if ihash(text)%nReduce == r {
-				err := enc.Encode(&KeyValue{Key: text, Value: ""})
-				if err != nil {
-					glog.Errorf("enc.Encode err: %v", err)
-				}
-			}
+		defer medFiles[r].Close()
+		encs[r] = json.NewEncoder(medFiles[r])
+	}
+
+	kvs := mapF(inFile, string(data))
+	for _, kv := range kvs {
+		i := ihash(kv.Key) % nReduce
+		if err = encs[i].Encode(kv); err != nil {
+			glog.Errorf("enc.Encode err: %v", err)
 		}
 	}
 }
