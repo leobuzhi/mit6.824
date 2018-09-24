@@ -1,3 +1,9 @@
 /vendor
 
 .vscode/
+
+
+mrtmp.*
+
+/main/diff.out
+/mapreduce/x.txt
