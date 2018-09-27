@@ -7,10 +7,31 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/golang/glog"
 )
+
+// Split in words
+func MapFunc(file string, value string) (res []KeyValue) {
+	debug("Map %v\n", value)
+	words := strings.Fields(value)
+	for _, w := range words {
+		kv := KeyValue{w, ""}
+		res = append(res, kv)
+	}
+
+	return
+}
+
+// Just return key
+func ReduceFunc(key string, values []string) string {
+	for _, e := range values {
+		debug("Reduce %s %v\n", key, e)
+	}
+	return ""
+}
 
 // Master holds all the state that the master needs to keep track of.
 type Master struct {
@@ -122,6 +143,20 @@ func (mr *Master) run(jobName string, files []string, nreduce int,
 	mr.doneChannel <- true
 }
 
+// Register is an RPC method that is called by workers after they have started
+// up to report that they are ready to receive tasks.
+func (mr *Master) Register(args *RegisterArgs, _ *struct{}) error {
+	mr.Lock()
+	defer mr.Unlock()
+	debug("Register: worker %s\n", args.Worker)
+	mr.workers = append(mr.workers, args.Worker)
+
+	// tell forwardRegistrations() that there's a new workers[] entry.
+	mr.newCond.Broadcast()
+
+	return nil
+}
+
 // Sequential runs map and reduce tasks sequentially, waiting for each task to
 // complete before running the next.
 func Sequential(jobName string, files []string, nreduce int,
@@ -144,4 +179,62 @@ func Sequential(jobName string, files []string, nreduce int,
 		mr.stats = []int{len(files) + nreduce}
 	})
 	return
+}
+
+// helper function that sends information about all existing
+// and newly registered workers to channel ch. schedule()
+// reads ch to learn about workers.
+func (mr *Master) forwardRegistrations(ch chan string) {
+	i := 0
+	for {
+		mr.Lock()
+		if len(mr.workers) > i {
+			// there's a worker that we haven't told schedule() about.
+			w := mr.workers[i]
+			go func() { ch <- w }() // send without holding the lock.
+			i = i + 1
+		} else {
+			// wait for Register() to add an entry to workers[]
+			// in response to an RPC from a new worker.
+			mr.newCond.Wait()
+		}
+		mr.Unlock()
+	}
+}
+
+// Distributed schedules map and reduce tasks on workers that register with the
+// master over RPC.
+func Distributed(jobName string, files []string, nreduce int, master string) (mr *Master) {
+	mr = newMaster(master)
+	mr.startRPCServer()
+	go mr.run(jobName, files, nreduce,
+		func(phase jobPhase) {
+			ch := make(chan string)
+			go mr.forwardRegistrations(ch)
+			schedule(mr.jobName, mr.files, mr.nReduce, phase, ch)
+		},
+		func() {
+			mr.stats = mr.killWorkers()
+			mr.stopRPCServer()
+		})
+	return
+}
+
+// killWorkers cleans up all workers by sending each one a Shutdown RPC.
+// It also collects and returns the number of tasks each worker has performed.
+func (mr *Master) killWorkers() []int {
+	mr.Lock()
+	defer mr.Unlock()
+	ntasks := make([]int, 0, len(mr.workers))
+	for _, w := range mr.workers {
+		debug("Master: shutdown worker %s\n", w)
+		var reply ShutdownReply
+		ok := call(w, "Worker.Shutdown", new(struct{}), &reply)
+		if ok == false {
+			fmt.Printf("Master: RPC %s shutdown error\n", w)
+		} else {
+			ntasks = append(ntasks, reply.Ntasks)
+		}
+	}
+	return ntasks
 }
