@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
+	"strconv"
 	"testing"
 
 	"github.com/golang/glog"
@@ -17,26 +17,6 @@ const (
 	nMap    = 20
 	nReduce = 10
 )
-
-// Split in words
-func MapFunc(file string, value string) (res []KeyValue) {
-	debug("Map %v\n", value)
-	words := strings.Fields(value)
-	for _, w := range words {
-		kv := KeyValue{w, ""}
-		res = append(res, kv)
-	}
-
-	return
-}
-
-// Just return key
-func ReduceFunc(key string, values []string) string {
-	for _, e := range values {
-		debug("Reduce %s %v\n", key, e)
-	}
-	return ""
-}
 
 // Make input file
 func makeInputs(num int) []string {
@@ -99,6 +79,26 @@ func check(t *testing.T, files []string) {
 	assert.Equal(t, i, nNumber)
 }
 
+// Cook up a unique-ish UNIX-domain socket name
+// in /var/tmp. can't use current directory since
+// AFS doesn't support UNIX-domain sockets.
+func port(suffix string) string {
+	s := "/var/tmp/824-"
+	s += strconv.Itoa(os.Getuid()) + "/"
+	os.Mkdir(s, 0777)
+	s += "mr"
+	s += strconv.Itoa(os.Getpid()) + "-"
+	s += suffix
+	return s
+}
+
+func setup() *Master {
+	files := makeInputs(nMap)
+	master := port("master")
+	mr := Distributed("test", files, nReduce, master)
+	return mr
+}
+
 // Workers report back how many RPCs they have processed in the Shutdown reply.
 // Check that they processed at least 1 DoTask RPC.
 func checkWorker(t *testing.T, l []int) {
@@ -120,5 +120,37 @@ func TestSequentialMany(t *testing.T) {
 	mr.Wait()
 	check(t, mr.files)
 	checkWorker(t, mr.stats)
+	cleanup(mr)
+}
+
+func TestParallelBasic(t *testing.T) {
+	mr := setup()
+	for i := 0; i < 2; i++ {
+		go RunWorker(mr.address, port("worker"+strconv.Itoa(i)),
+			MapFunc, ReduceFunc, -1, nil)
+	}
+	mr.Wait()
+	check(t, mr.files)
+	checkWorker(t, mr.stats)
+	cleanup(mr)
+}
+
+func TestParallelCheck(t *testing.T) {
+	mr := setup()
+	parallelism := &Parallelism{}
+	for i := 0; i < 2; i++ {
+		go RunWorker(mr.address, port("worker"+strconv.Itoa(i)),
+			MapFunc, ReduceFunc, -1, parallelism)
+	}
+	mr.Wait()
+	check(t, mr.files)
+	checkWorker(t, mr.stats)
+
+	parallelism.mu.Lock()
+	if parallelism.max < 2 {
+		t.Fatalf("workers did not execute in parallel")
+	}
+	parallelism.mu.Unlock()
+
 	cleanup(mr)
 }
