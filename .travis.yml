@@ -1,0 +1,16 @@
+sudo: false
+
+language: go
+
+go:
+  - 1.10.x
+
+before_script:
+  - go get -u github.com/golang/dep/cmd/dep
+  - dep ensure
+
+script:
+  - go test -race ./...
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
