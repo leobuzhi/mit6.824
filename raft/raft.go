@@ -247,7 +247,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
-	term := -1
+	term := rf.currentTerm
 	isLeader := true
 
 	// Your code here (2B).
@@ -314,8 +314,20 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	//note(joey.chen): todo
 	reply.Success = true
 
-	//to tell someone become leader
+	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		return
+	}
+
+	//to tell others someone become leader
 	rf.hearteat <- struct{}{}
+	if args.Term > rf.currentTerm {
+		rf.currentTerm = args.Term
+		rf.state = stateFollower
+		rf.votedFor = -1
+	}
+	reply.Term = args.Term
+
 }
 
 func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -379,6 +391,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = stateFollower
 	rf.votedFor = -1
+	rf.currentTerm = 0
 	rf.logs = append(rf.logs, LogEntry{})
 	rf.hearteat = make(chan struct{}, 10)
 	rf.Leader = make(chan struct{}, len(peers))
@@ -397,7 +410,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 				}
 			case stateLeader:
 				rf.boatcastAppendEntries()
-				time.Sleep(time.Microsecond * 50)
+				//reference(joey.chen): broadcastTime ≪ electionTimeout ≪ MTBF
+				//MTBF is the average time between failures for a single server.
+				time.Sleep(time.Microsecond * 5)
 			case stateCandidate:
 				rf.mu.Lock()
 				rf.currentTerm++
