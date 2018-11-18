@@ -43,7 +43,7 @@ type config struct {
 	logs      []map[int]int // copy of each server's committed entries
 	start     time.Time     // time at which makeConfig() was called
 	// begin()/end() statistics
-	t0        time.Time // time at which test_test.go called cfg.begin()
+	t0        time.Time // time at which raft_test.go called cfg.begin()
 	rpcs0     int       // rpcTotal() at start of test
 	cmds0     int       // number of agreements
 	maxIndex  int
@@ -343,8 +343,8 @@ func (cfg *config) checkTerms() int {
 func (cfg *config) checkNoLeader() {
 	for i := 0; i < cfg.n; i++ {
 		if cfg.connected[i] {
-			_, is_leader := cfg.rafts[i].GetState()
-			if is_leader {
+			_, isLeader := cfg.rafts[i].GetState()
+			if isLeader {
 				cfg.t.Fatalf("expected no leader, but %v claims to be leader", i)
 			}
 		}
@@ -369,7 +369,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
 					index, cmd, cmd1)
 			}
-			count += 1
+			count++
 			cmd = cmd1
 		}
 	}
