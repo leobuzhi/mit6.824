@@ -18,7 +18,6 @@ package raft
 //
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -393,7 +392,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 			case stateFollower:
 				select {
 				case <-rf.hearteat:
-					fmt.Println("hearteat")
 				case <-time.After(timeWithoutLeader()):
 					rf.state = stateCandidate
 				}
