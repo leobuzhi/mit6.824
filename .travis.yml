@@ -10,7 +10,7 @@ before_script:
   - dep ensure
 
 script:
-  - go test -race ./...
+  - go test ./...
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
