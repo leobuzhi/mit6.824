@@ -437,8 +437,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 
 //reference(joey.chen): http://nil.csail.mit.edu/6.824/2016/papers/raft-extended.pdf
 func timeWithoutLeader() time.Duration {
-	return time.Duration(rand.Int63()%333+550) * time.Millisecond
-	// return time.Duration(rand.Int()%150+150) * time.Millisecond
+	return time.Duration(rand.Int()%150+150) * time.Millisecond
 }
 
 //
@@ -485,7 +484,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 				rf.broadcastAppendEntries()
 				//reference(joey.chen): broadcastTime ≪ electionTimeout ≪ MTBF
 				//MTBF is the average time between failures for a single server.
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(5 * time.Millisecond)
 			case stateCandidate:
 				rf.mu.Lock()
 				rf.currentTerm++
@@ -523,7 +522,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 				rf.mu.Lock()
 				index := rf.logs[0].Index
 				for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
-					applyCh <- ApplyMsg{CommandIndex: i, Command: rf.logs[i-index].Cmd}
+					applyCh <- ApplyMsg{CommandIndex: i, Command: rf.logs[i-index].Cmd, CommandValid: true}
 					rf.lastApplied = i
 				}
 				rf.mu.Unlock()

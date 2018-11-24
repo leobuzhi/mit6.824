@@ -96,12 +96,42 @@ func TestBasicAgree2B(t *testing.T) {
 			t.Fatalf("some have committed before Start()")
 		}
 
-		//note(joey.chen):to fix
-		// xindex := cfg.one(index*100, servers, false)
-		// if xindex != index {
-		// 	t.Fatalf("got index %v but expected %v", xindex, index)
-		// }
+		xindex := cfg.one(index*100, servers, false)
+		if xindex != index {
+			t.Fatalf("got index %v but expected %v", xindex, index)
+		}
 	}
+
+	cfg.end()
+}
+
+func TestFailAgree2B(t *testing.T) {
+	servers := 3
+	cfg := makeConfig(t, servers, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (2B): agreement despite follower disconnection")
+
+	cfg.one(101, servers, false)
+
+	// follower network disconnection
+	leader := cfg.checkOneLeader()
+	cfg.disconnect((leader + 1) % servers)
+
+	// agree despite one disconnected server?
+	cfg.one(102, servers-1, false)
+	cfg.one(103, servers-1, false)
+	time.Sleep(RaftElectionTimeout)
+	cfg.one(104, servers-1, false)
+	cfg.one(105, servers-1, false)
+
+	// re-connect
+	cfg.connect((leader + 1) % servers)
+
+	// agree with full set of servers?
+	cfg.one(106, servers, true)
+	time.Sleep(RaftElectionTimeout)
+	cfg.one(107, servers, true)
 
 	cfg.end()
 }

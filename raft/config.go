@@ -163,7 +163,7 @@ func (cfg *config) start1(i int) {
 	applyCh := make(chan ApplyMsg)
 	go func() {
 		for m := range applyCh {
-			err_msg := ""
+			errMsg := ""
 			if m.CommandValid == false {
 				// ignore other types of ApplyMsg
 			} else if v, ok := (m.Command).(int); ok {
@@ -171,7 +171,7 @@ func (cfg *config) start1(i int) {
 				for j := 0; j < len(cfg.logs); j++ {
 					if old, oldok := cfg.logs[j][m.CommandIndex]; oldok && old != v {
 						// some server has already committed a different value for this entry!
-						err_msg = fmt.Sprintf("commit index=%v server=%v %v != server=%v %v",
+						errMsg = fmt.Sprintf("commit index=%v server=%v %v != server=%v %v",
 							m.CommandIndex, i, m.Command, j, old)
 					}
 				}
@@ -183,15 +183,15 @@ func (cfg *config) start1(i int) {
 				cfg.mu.Unlock()
 
 				if m.CommandIndex > 1 && prevok == false {
-					err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
+					errMsg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
 				}
 			} else {
-				err_msg = fmt.Sprintf("committed command %v is not an int", m.Command)
+				errMsg = fmt.Sprintf("committed command %v is not an int", m.Command)
 			}
 
-			if err_msg != "" {
-				log.Fatalf("apply error: %v\n", err_msg)
-				cfg.applyErr[i] = err_msg
+			if errMsg != "" {
+				log.Fatalf("apply error: %v\n", errMsg)
+				cfg.applyErr[i] = errMsg
 				// keep reading after error so that Raft doesn't block
 				// holding locks...
 			}
@@ -448,7 +448,6 @@ func (cfg *config) one(cmd int, expectedServers int, retry bool) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-				fmt.Println("nd cmd1:", nd, cmd1)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {
