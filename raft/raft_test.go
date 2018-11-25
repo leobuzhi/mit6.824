@@ -135,3 +135,55 @@ func TestFailAgree2B(t *testing.T) {
 
 	cfg.end()
 }
+
+func TestFailNoAgree2B(t *testing.T) {
+	servers := 5
+	cfg := makeConfig(t, servers, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (2B): no agreement if too many followers disconnect")
+
+	cfg.one(10, servers, false)
+
+	// 3 of 5 followers disconnect
+	leader := cfg.checkOneLeader()
+
+	cfg.disconnect((leader + 1) % servers)
+	cfg.disconnect((leader + 2) % servers)
+	cfg.disconnect((leader + 3) % servers)
+
+	index, _, ok := cfg.rafts[leader].Start(20)
+	if ok != true {
+		t.Fatalf("leader rejected Start()")
+	}
+	if index != 2 {
+		t.Fatalf("expected index 2, got %v", index)
+	}
+
+	time.Sleep(2 * RaftElectionTimeout)
+
+	n, _ := cfg.nCommitted(index)
+	if n > 0 {
+		t.Fatalf("%v committed but no majority", n)
+	}
+
+	// repair
+	cfg.connect((leader + 1) % servers)
+	cfg.connect((leader + 2) % servers)
+	cfg.connect((leader + 3) % servers)
+
+	// the disconnected majority may have chosen a leader from
+	// among their own ranks, forgetting index 2.
+	leader2 := cfg.checkOneLeader()
+	index2, _, ok2 := cfg.rafts[leader2].Start(30)
+	if ok2 == false {
+		t.Fatalf("leader2 rejected Start()")
+	}
+	if index2 < 2 || index2 > 3 {
+		t.Fatalf("unexpected index %v", index2)
+	}
+
+	cfg.one(1000, servers, true)
+
+	cfg.end()
+}

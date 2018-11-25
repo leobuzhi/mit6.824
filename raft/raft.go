@@ -159,9 +159,12 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+	//note(joey.chen): it must add lock,because the server maybe change  status
+	//when other server send RequestVote RPC
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	defer func() { reply.Term = rf.currentTerm }()
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
@@ -169,9 +172,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	if args.Term > rf.currentTerm {
-		reply.Term = args.Term
-
-		rf.currentTerm = args.Term
 		rf.state = stateFollower
 		rf.votedFor = -1
 	}
@@ -263,6 +263,8 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	index := -1
 	term := rf.currentTerm
 	isLeader := rf.state == stateLeader
@@ -303,6 +305,8 @@ func (rf *Raft) broadcastRequestVote() {
 }
 
 func (rf *Raft) broadcastAppendEntries() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	index := rf.logs[0].Index
 	n := rf.commitIndex
 	for i := rf.commitIndex + 1; i <= rf.getLastLogIndex(); i++ {
@@ -357,6 +361,8 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	reply.Success = false
 
 	if args.Term < rf.currentTerm {
@@ -427,7 +433,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		if reply.Success {
 			if len(args.Logs) > 0 {
 				rf.nextIndex[server] = args.Logs[len(args.Logs)-1].Index + 1
-				rf.matchIndex[server] = rf.nextIndex[server] + 1
+				rf.matchIndex[server] = rf.nextIndex[server] - 1
 			}
 		} else {
 			rf.nextIndex[server] = reply.NextIndex
@@ -466,7 +472,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.logs = append(rf.logs, LogEntry{})
 	rf.hearteat = make(chan struct{}, 10)
 	rf.leader = make(chan struct{}, len(peers))
-	rf.commit = make(chan struct{}, len(peers))
+	rf.commit = make(chan struct{}, 10)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
@@ -496,11 +502,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 				select {
 				case <-time.After(timeWithoutLeader()):
-					//others become leader
-				case <-rf.hearteat:
+				case <-rf.hearteat: //others become leader
 					rf.state = stateFollower
-					//become leader
-				case <-rf.leader:
+				case <-rf.leader: //become leader
 					rf.mu.Lock()
 					rf.state = stateLeader
 					rf.nextIndex = make([]int, len(rf.peers))
