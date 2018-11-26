@@ -10,6 +10,7 @@ package raft
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -184,6 +185,107 @@ func TestFailNoAgree2B(t *testing.T) {
 	}
 
 	cfg.one(1000, servers, true)
+
+	cfg.end()
+}
+
+func TestConcurrentStarts2B(t *testing.T) {
+	servers := 3
+	cfg := makeConfig(t, servers, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (2B): concurrent Start()s")
+
+	var success bool
+loop:
+	for try := 0; try < 5; try++ {
+		if try > 0 {
+			// give solution some time to settle
+			time.Sleep(3 * time.Second)
+		}
+
+		leader := cfg.checkOneLeader()
+		_, term, ok := cfg.rafts[leader].Start(1)
+		if !ok {
+			// leader moved on really quickly
+			continue
+		}
+
+		iters := 5
+		var wg sync.WaitGroup
+		is := make(chan int, iters)
+		for ii := 0; ii < iters; ii++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				i, term1, ok := cfg.rafts[leader].Start(100 + i)
+				if term1 != term {
+					return
+				}
+				if ok != true {
+					return
+				}
+				is <- i
+			}(ii)
+		}
+
+		wg.Wait()
+		close(is)
+
+		for j := 0; j < servers; j++ {
+			if t, _ := cfg.rafts[j].GetState(); t != term {
+				// term changed -- can't expect low RPC counts
+				continue loop
+			}
+		}
+
+		failed := false
+		cmds := []int{}
+		for index := range is {
+			cmd := cfg.wait(index, servers, term)
+			if ix, ok := cmd.(int); ok {
+				if ix == -1 {
+					// peers have moved on to later terms
+					// so we can't expect all Start()s to
+					// have succeeded
+					failed = true
+					break
+				}
+				cmds = append(cmds, ix)
+			} else {
+				t.Fatalf("value %v is not an int", cmd)
+			}
+		}
+
+		if failed {
+			// avoid leaking goroutines
+			go func() {
+				for range is {
+				}
+			}()
+			continue
+		}
+
+		for ii := 0; ii < iters; ii++ {
+			x := 100 + ii
+			ok := false
+			for j := 0; j < len(cmds); j++ {
+				if cmds[j] == x {
+					ok = true
+				}
+			}
+			if ok == false {
+				t.Fatalf("cmd %v missing in %v", x, cmds)
+			}
+		}
+
+		success = true
+		break
+	}
+
+	if !success {
+		t.Fatalf("term changed too often")
+	}
 
 	cfg.end()
 }
