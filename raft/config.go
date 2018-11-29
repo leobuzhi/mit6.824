@@ -454,18 +454,17 @@ func (cfg *config) one(cmd int, expectedServers int, retry bool) int {
 						// and it was the command we submitted.
 						return index
 					}
+
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
-				fmt.Println("ok1")
 				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 			}
 		} else {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	fmt.Println("ok2")
 	cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	return -1
 }
