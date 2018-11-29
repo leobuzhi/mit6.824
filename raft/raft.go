@@ -158,7 +158,7 @@ type RequestVoteReply struct {
 //
 // example RequestVote RPC handler.
 //
-func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	//note(joey.chen): it must add lock,because the server maybe change  status
 	//when other server send RequestVote RPC
 	rf.mu.Lock()
@@ -173,6 +173,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	if args.Term > rf.currentTerm {
 		rf.state = stateFollower
+		rf.currentTerm = args.Term
 		rf.votedFor = -1
 	}
 
@@ -223,7 +224,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 //
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -288,6 +289,8 @@ func (rf *Raft) Kill() {
 }
 
 func (rf *Raft) broadcastRequestVote() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	if rf.state != stateCandidate {
 		glog.Warning("broadcastRequestVote but not candidate!!!")
 		return
@@ -298,7 +301,7 @@ func (rf *Raft) broadcastRequestVote() {
 	for i := range rf.peers {
 		if i != rf.me {
 			go func(i int) {
-				rf.sendRequestVote(i, &args, new(RequestVoteReply))
+				rf.sendRequestVote(i, args, new(RequestVoteReply))
 			}(i)
 		}
 	}
