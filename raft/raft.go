@@ -493,7 +493,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 				rf.broadcastAppendEntries()
 				//reference(joey.chen): broadcastTime ≪ electionTimeout ≪ MTBF
 				//MTBF is the average time between failures for a single server.
-				time.Sleep(5 * time.Millisecond)
+				time.Sleep(50 * time.Millisecond)
 			case stateCandidate:
 				rf.mu.Lock()
 				rf.currentTerm++
