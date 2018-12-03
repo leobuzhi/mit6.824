@@ -511,3 +511,49 @@ loop:
 
 	cfg.end()
 }
+
+func TestPersist12C(t *testing.T) {
+	servers := 3
+	cfg := makeConfig(t, servers, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (2C): basic persistence")
+
+	cfg.one(11, servers, true)
+
+	// crash and re-start all
+	for i := 0; i < servers; i++ {
+		cfg.start1(i)
+	}
+	for i := 0; i < servers; i++ {
+		cfg.disconnect(i)
+		cfg.connect(i)
+	}
+
+	cfg.one(12, servers, true)
+
+	leader1 := cfg.checkOneLeader()
+	cfg.disconnect(leader1)
+	cfg.start1(leader1)
+	cfg.connect(leader1)
+
+	cfg.one(13, servers, true)
+
+	leader2 := cfg.checkOneLeader()
+	cfg.disconnect(leader2)
+	cfg.one(14, servers-1, true)
+	cfg.start1(leader2)
+	cfg.connect(leader2)
+
+	cfg.wait(4, servers, -1) // wait for leader2 to join before killing i3
+
+	i3 := (cfg.checkOneLeader() + 1) % servers
+	cfg.disconnect(i3)
+	cfg.one(15, servers-1, true)
+	cfg.start1(i3)
+	cfg.connect(i3)
+
+	cfg.one(16, servers, true)
+
+	cfg.end()
+}

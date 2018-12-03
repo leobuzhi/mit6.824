@@ -18,11 +18,13 @@ package raft
 //
 
 import (
+	"bytes"
 	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/leobuzhi/mit6.824/labgob"
 	"github.com/leobuzhi/mit6.824/labrpc"
 )
 
@@ -102,14 +104,14 @@ func (rf *Raft) getLastLogIndex() int {
 // see paper's Figure 2 for a description of what should be persistent.
 //
 func (rf *Raft) persist() {
-	// Your code here (2C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.commitIndex)
+	e.Encode(rf.logs)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -119,19 +121,23 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm, votedFor, commitIndex int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+		d.Decode(&votedFor) != nil ||
+		d.Decode(&commitIndex) != nil ||
+		d.Decode(&logs) != nil {
+		glog.Warningf("readPersist error")
+		return
+	}
+
+	rf.currentTerm = currentTerm
+	rf.votedFor = votedFor
+	rf.commitIndex = commitIndex
+	rf.logs = logs
 }
 
 //
@@ -243,6 +249,8 @@ func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *Request
 			if rf.votedCount > len(rf.peers)/2 {
 				rf.state = stateLeader
 				rf.leader <- struct{}{}
+
+				rf.persist()
 			}
 		}
 	}
@@ -326,6 +334,8 @@ func (rf *Raft) broadcastAppendEntries() {
 	if n != rf.commitIndex {
 		rf.commitIndex = n
 		rf.commit <- struct{}{}
+
+		rf.persist()
 	}
 
 	for i := range rf.peers {
@@ -417,6 +427,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 			rf.commitIndex = args.LeaderCommit
 		}
 		rf.commit <- struct{}{}
+		rf.persist()
 	}
 }
 
@@ -467,7 +478,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 
-	// Your initialization code here (2A, 2B, 2C).
 	rf.state = stateFollower
 	rf.votedFor = -1
 	rf.currentTerm = 0
