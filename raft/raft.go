@@ -57,9 +57,7 @@ type LogEntry struct {
 	Cmd   interface{}
 }
 
-//
-// A Go object implementing a single Raft peer.
-//
+// Raft is A Go object implementing a single Raft peer.
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
@@ -98,11 +96,9 @@ func (rf *Raft) getLastLogIndex() int {
 	return rf.logs[len(rf.logs)-1].Index
 }
 
-//
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
-//
 func (rf *Raft) persist() {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
@@ -114,9 +110,7 @@ func (rf *Raft) persist() {
 	rf.persister.SaveRaftState(data)
 }
 
-//
 // restore previously persisted state.
-//
 func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
@@ -140,10 +134,7 @@ func (rf *Raft) readPersist(data []byte) {
 	rf.logs = logs
 }
 
-//
-// example RequestVote RPC arguments structure.
-// field names must start with capital letters!
-//
+// RequestVoteArgs is RequestVote RPC arguments structure.
 type RequestVoteArgs struct {
 	Term         int
 	CandidateID  int
@@ -151,19 +142,14 @@ type RequestVoteArgs struct {
 	LastLogTerm  int
 }
 
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
+// RequestVoteReply is RequestVote RPC reply structure.
 type RequestVoteReply struct {
 	// Your data here (2A).
 	Term        int
 	VoteGranted bool
 }
 
-//
-// example RequestVote RPC handler.
-//
+// RequestVote RPC handler.
 func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) {
 	//note(joey.chen): it must add lock,because the server maybe change  status
 	//when other server send RequestVote RPC
@@ -257,8 +243,7 @@ func (rf *Raft) sendRequestVote(server int, args RequestVoteArgs, reply *Request
 	return true
 }
 
-//
-// the service using Raft (e.g. a k/v server) wants to start
+// Start a command. the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
 // agreement and return immediately. there is no guarantee that this
@@ -286,8 +271,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return index, term, isLeader
 }
 
-//
-// the tester calls Kill() when a Raft instance won't
+// Kill a peer. the tester calls Kill() when a Raft instance won't
 // be needed again. you are not required to do anything
 // in Kill(), but it might be convenient to (for example)
 // turn off debug output from this instance.
@@ -358,6 +342,7 @@ func (rf *Raft) broadcastAppendEntries() {
 	}
 }
 
+// AppendEntriesArgs is AppendEntries RPC arguments structure.
 type AppendEntriesArgs struct {
 	Term         int
 	LeaderID     int
@@ -367,12 +352,14 @@ type AppendEntriesArgs struct {
 	PreLogTerm   int
 }
 
+// AppendEntriesReply is AppendEntries RPC reply structure.
 type AppendEntriesReply struct {
 	Success   bool
 	Term      int
 	NextIndex int
 }
 
+// AppendEntries RPC handler.
 func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
